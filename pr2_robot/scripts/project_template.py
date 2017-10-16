@@ -22,6 +22,9 @@ from std_msgs.msg import Int32
 from std_msgs.msg import String
 from pr2_robot.srv import *
 from rospy_message_converter import message_converter
+from std_msgs.msg import Int32
+from std_msgs.msg import String
+from geometry_msgs.msg import Pose
 import yaml
 
 
@@ -48,21 +51,26 @@ def send_to_yaml(yaml_filename, dict_list):
 
 # Callback function for your Point Cloud Subscriber
 def pcl_callback(pcl_msg):
+    print("in callback")
 
 # Exercise-2 TODOs:
 
     # TODO: Convert ROS msg to PCL data
     pcl_data = ros_to_pcl(pcl_msg)
+   
     # TODO: Statistical Outlier Filtering
     outlier_filter = pcl_data.make_statistical_outlier_filter()
-    outlier_filter.set_mean_k(50) # num points to analyze
-    x = 1.0 #scale factor
+    outlier_filter.set_mean_k(2) # num points to analyze
+    x = .0001 #scale factor
     outlier_filter.set_std_dev_mul_thresh(x)
     pcl_data = outlier_filter.filter()
 
+
+
+
     # TODO: Voxel Grid Downsampling
     vox = pcl_data.make_voxel_grid_filter()
-    LEAF_SIZE = .01
+    LEAF_SIZE = .005
     vox.set_leaf_size(LEAF_SIZE,LEAF_SIZE,LEAF_SIZE)
     pcl_filtered = vox.filter()
 
@@ -77,12 +85,35 @@ def pcl_callback(pcl_msg):
 
     pcl_filtered = passthrough.filter()
 
+    # X restriction
+    passthrough = pcl_filtered.make_passthrough_filter()
+    filter_axis = 'x'
+    passthrough.set_filter_field_name(filter_axis)
+    axis_min = .25
+    axis_max = 1
+    passthrough.set_filter_limits(axis_min,axis_max)
+
+    pcl_filtered = passthrough.filter()
+
+     # Y restriction
+    passthrough = pcl_filtered.make_passthrough_filter()
+    filter_axis = 'y'
+    passthrough.set_filter_field_name(filter_axis)
+    axis_min = -.5
+    axis_max = .5
+    passthrough.set_filter_limits(axis_min,axis_max)
+
+    pcl_filtered = passthrough.filter()
+
+
+
+
     # TODO: RANSAC Plane Segmentation
     seg = pcl_filtered.make_segmenter()
 
     seg.set_model_type(pcl.SACMODEL_PLANE)
     seg.set_method_type(pcl.SAC_RANSAC)
-    max_distance= .015
+    max_distance= .01
     seg.set_distance_threshold(max_distance)
 
     inliers,coefficients = seg.segment()
@@ -90,6 +121,14 @@ def pcl_callback(pcl_msg):
     # TODO: Extract inliers and outliers
     cloud_objects = pcl_filtered.extract(inliers, negative=True)
     cloud_table = pcl_filtered.extract(inliers, negative=False)
+
+    #######TESTING
+    testCloudObjects = pcl_to_ros(cloud_objects)
+    test_pub.publish(testCloudObjects)
+    #rospy.loginfo("published")
+    ##############TESTING
+
+
 
     # TODO: Euclidean Clustering
     white_cloud = XYZRGB_to_XYZ(cloud_objects)
@@ -99,9 +138,9 @@ def pcl_callback(pcl_msg):
     ec = white_cloud.make_EuclideanClusterExtraction()
     # Set tolerances for distance threshold 
     # as well as minimum and maximum cluster size (in points)
-    ec.set_ClusterTolerance(0.02)
-    ec.set_MinClusterSize(50)
-    ec.set_MaxClusterSize(1000)
+    ec.set_ClusterTolerance(0.05)
+    ec.set_MinClusterSize(25)
+    ec.set_MaxClusterSize(10000)
     # Search the k-d tree for clusters
     ec.set_SearchMethod(tree)
     # Extract indices for each of the discovered clusters
@@ -138,17 +177,20 @@ def pcl_callback(pcl_msg):
     for index, pts_list in enumerate(cluster_indices):
 
         # Grab the points for the cluster
-        pcl_cluster = cluster_cloud.extract(pts_list)
+        pcl_cluster = cloud_objects.extract(pts_list)
         ros_cluster = pcl_to_ros(pcl_cluster)
 
-        # Compute the associated feature vector
+        # Compute the associated feature vector       
         chists = compute_color_histograms(ros_cluster, using_hsv=True)
         normals = get_normals(ros_cluster)
         nhists = compute_normal_histograms(normals)
         feature = np.concatenate((chists, nhists))
 
+        #print(feature)
+
         # Make the prediction
         prediction = clf.predict(scaler.transform(feature.reshape(1,-1)))
+        print(prediction)
         label = encoder.inverse_transform(prediction)[0]
         detected_objects_labels.append(label)
 
@@ -165,17 +207,77 @@ def pcl_callback(pcl_msg):
         detected_objects.append(do)
 
     rospy.loginfo('Detected {} objects: {}'.format(len(detected_objects_labels), detected_objects_labels))
-
     # Publish the list of detected objects
     detected_objects_pub.publish(detected_objects)
+
+    dict_list = []
+    for obj in detected_objects:
+        pick_pose = getCentroid(obj.cloud)
+        test_scene_num = Int32()
+        test_scene_num.data = scene_num         
+
+        for labelledObj in object_list_param:
+            if labelledObj['name']== obj.label:
+                print(obj.label, " object found")
+                object_name = String()
+                object_name.data = labelledObj['name']
+                arm_name = String()
+                place_pose = Pose()
+                dropbox = rospy.get_param('/dropbox')
+                if(labelledObj['group'] == dropbox[0]['group']):
+                    arm_name.data = dropbox[0]['name']
+                    pos = dropbox[0]['position']
+                    place_pose.position.x = pos[0]
+                    place_pose.position.y = pos[1]
+                    place_pose.position.z = pos[2]
+
+                else:
+                    arm_name.data = dropbox[1]['name']
+                    pos = dropbox[1]['position']
+                    place_pose.position.x = pos[0]
+                    place_pose.position.y = pos[1]
+                    place_pose.position.z = pos[2]
+                
+                break;
+        # print(test_scene_num)
+        # print((arm_name))
+        # print((object_name))
+        # print((pick_pose))
+        # print((place_pose))
+        # arm_name1 = String()
+        # place_pose1 = Pose()
+        # pick_pose1 = Pose()
+        # test_scene_num1 = Int32()
+        # object_name1 = String()
+        yaml_dict = make_yaml_dict(test_scene_num, arm_name, object_name, pick_pose, place_pose)
+        dict_list.append(yaml_dict)
+
+    # print((dict_list))
+
+    filename = "output_" + str(scene_num) +".yaml"
+    print(filename)
+    send_to_yaml(filename, dict_list)
+    print("done perceiving")
+
+
+    
 
     # Suggested location for where to invoke your pr2_mover() function within pcl_callback()
     # Could add some logic to determine whether or not your object detections are robust
     # before calling pr2_mover()
-    try:
-        pr2_mover(detected_objects_list)
-    except rospy.ROSInterruptException:
-        pass
+    # try:
+    #     pr2_mover(detected_objects)
+    # except rospy.ROSInterruptException:
+    #     pass
+def getCentroid(cloud): #gets the centroid of a roscloud and returns an array of position xyz
+    points = ros_to_pcl(cloud).to_array()
+    centroid = np.mean(points, axis=0)[:3]
+    centroidPose = Pose()
+    centroidPose.position.x = np.asscalar(centroid[0])
+    centroidPose.position.y = np.asscalar(centroid[1])
+    centroidPose.position.z = np.asscalar(centroid[2])
+    #print(centroidPose)
+    return centroidPose
 
 # function to load parameters and request PickPlace service
 def pr2_mover(object_list):
@@ -230,12 +332,28 @@ if __name__ == '__main__':
     object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
     detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size = 1)
 
+    test_pub = rospy.Publisher("/testCloud",PointCloud2,queue_size=1)
+
     # TODO: Load Model From disk
-    model = pickle.load(open('model.sav', 'rb'))
+    scene_num = 0
+    object_list_param = rospy.get_param('/object_list')
+    print(object_list_param)
+    if(len(object_list_param) == 3):
+        model = pickle.load(open('test3.sav', 'rb'))
+        scene_num = 1
+
+    elif len(object_list_param) == 5:
+        model = pickle.load(open('test2.sav','rb'))
+        scene_num = 2
+    else:
+        model = pickle.load(open('test3.sav','rb'))
+        scene_num = 3
     clf = model['classifier']
+
     encoder = LabelEncoder()
     encoder.classes_ = model['classes']
     scaler = model['scaler']
+    print("Scene number" , scene_num)
 
     # Initialize color_list
     get_color_list.color_list = []
