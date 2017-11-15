@@ -27,6 +27,9 @@
 ## [Rubric](https://review.udacity.com/#!/rubrics/1067/view) Points
 ### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
 
+
+![demo-2](https://user-images.githubusercontent.com/20687560/28748286-9f65680e-7468-11e7-83dc-f1a32380b89c.png)
+
 ---
 ### Writeup / README
 
@@ -46,21 +49,42 @@ Once the bounding box selected all points that were interesting to us a RANSAC m
 #### 2. Complete Exercise 2 steps: Pipeline including clustering for segmentation implemented.  
 
 Once the objects were separated from the table, the next task was to separate them from each other. This was accomplished by using the EuclideanClusterExtraction algorithm with a cluster tolerance set to .05, min cluster size of 25, and a max cluster size of 10000. The objects were fairly spaced out on the table so the tolerances for this step did not need to be very tight.
-![cluster-1]()
+
+![cluster-1](https://raw.githubusercontent.com/violas15/RoboND-Perception-Project/master/pr2_robot/scripts/clusteredObjects.png)
+Here is the image of the separate clustered objects. The objects here are color coded for identification but the real colors were used moving forwards.
 
 #### 2. Complete Exercise 3 Steps.  Features extracted and SVM trained.  Object recognition implemented.
-Here is an example of how to include an image in your writeup.
 
-![demo-1](https://user-images.githubusercontent.com/20687560/28748231-46b5b912-7467-11e7-8778-3095172b7b19.png)
+With the objects separated from each other it was time to identify them. Color and shape's of objects were extracted by creating historgrams of colors and surface normals for each object in many different poses. These formed the trained model that the image classifier would compare against later. The success of this model can be seen by looking at the normalized confusion matrix.
+
+![matrix](https://raw.githubusercontent.com/violas15/RoboND-Perception-Project/master/pr2_robot/scripts/normalizedConfusingMatrix.png) 
+From this matrix it is clear that the model was able to correctly classify over 95% of objects in the testing set. This performance helped the performance of the overall object recognition.
+
+With the model trained object recognition was implemented by gathering the same histograms, color and surface normals, from each of the segmented objects. These histograms were compared to the model and a prediction was made about what each object was.
 
 ### Pick and Place Setup
 
 #### 1. For all three tabletop setups (`test*.world`), perform object recognition, then read in respective pick list (`pick_list_*.yaml`). Next construct the messages that would comprise a valid `PickPlace` request output them to `.yaml` format.
 
-And here's another image! 
-![demo-2](https://user-images.githubusercontent.com/20687560/28748286-9f65680e-7468-11e7-83dc-f1a32380b89c.png)
+After the object recognition completed every object had a label and a corresponding set of points. To represent this in a format that could be used for a pick and place operation the information was compared to a pick list to create the yaml dictionary values. The objects centroid, calculated from all the corresponding points, the name, which arm, and which bin was the correct location for the item were combined into individual yaml dictionary entries and then combined into a list containg all of the results. The output of this operation can be seen in the .yaml files in the pr2_robot/scripts folder.
 
-Spend some time at the end to discuss your code, what techniques you used, what worked and why, where the implementation might fail and how you might improve it if you were going to pursue this project further.  
+This completed the pipeline and results could be visualized using RVIZ, where the corresponding labels were published for each world.
+
+World 1
+![world-1](https://raw.githubusercontent.com/violas15/RoboND-Perception-Project/master/pr2_robot/scripts/World1.png)
+3/3 objects were correctly identified.
+
+World 2
+![world-2](https://raw.githubusercontent.com/violas15/RoboND-Perception-Project/master/pr2_robot/scripts/World2.png)
+4/5 objects were correctly identified. The book was labelled incorrectly as soap.
+
+World 3
+![world-3](https://raw.githubusercontent.com/violas15/RoboND-Perception-Project/master/pr2_robot/scripts/World3.png)
+6/8 objects were correctly identified. The book and the glue were labelled incorrectly as soap and biscuits respectively.
+
+
+
+The above technique worked fairly well in this situation because it was a very controlled enviornment. The matching of histograms for color and surface normals would lose accuracy in a real world situation due to changing light levels and potentially misformed packaging. By having additional images of objects to train the model this could be counteracted but the training process would continue to take an increasing amount of time. 
 
 
 
