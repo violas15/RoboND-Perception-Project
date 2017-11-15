@@ -36,8 +36,17 @@ You're reading it!
 
 ### Exercise 1, 2 and 3 pipeline implemented
 #### 1. Complete Exercise 1 steps. Pipeline for filtering and RANSAC plane fitting implemented.
+Before analyzing the pointcloud to identify objects I filtered out statistical outliers using the make_statistical_outlier_filter(). I set the mean k to 2 and the scale factor to .0001 to aggressively filter out points and minimize the noise.
+
+Once the outliers were removed I downsampled the point cloud using a voxel_grid_filter with a leaf size of .005 to make the image processing faster. Using this smaller number of points I first filtered them by only keeping the points inside the table's bounding box of z .6m to 1.1m, x .25m to 1m, and y -.5m to .5m. This prevented other tables and side bins from interfering with further filtering.
+
+Once the bounding box selected all points that were interesting to us a RANSAC model of a plane was used to separate the table from the objects resting on the table. The max distance for this plane was set to .01 so the bottoms of objects were left mostly in tact and were not clustered as part of the table.
+
 
 #### 2. Complete Exercise 2 steps: Pipeline including clustering for segmentation implemented.  
+
+Once the objects were separated from the table, the next task was to separate them from each other. This was accomplished by using the EuclideanClusterExtraction algorithm with a cluster tolerance set to .05, min cluster size of 25, and a max cluster size of 10000. The objects were fairly spaced out on the table so the tolerances for this step did not need to be very tight.
+![cluster-1]()
 
 #### 2. Complete Exercise 3 Steps.  Features extracted and SVM trained.  Object recognition implemented.
 Here is an example of how to include an image in your writeup.
